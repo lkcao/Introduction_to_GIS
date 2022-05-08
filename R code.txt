@@ -1,0 +1,92 @@
+setwd("D:/2020年summer/GIS/final")
+library(sf)
+library(tidyverse)
+library(conflicted)
+conflict_prefer("select", "tidyverse")
+conflict_prefer("summarize", "tidyverse")
+library(viridis)
+library(rgeos)
+library(rgdal)
+
+community.Areas <- st_read("geo_export_8974c6ab-3024-4333-8427-41dd725cdb52.shp")
+vars <- read.csv("vars.csv")
+glimpse(community.Areas)
+head(vars)
+Chicago_community <- merge(community.Areas, vars, by.x="area_num_1", by.y="Community.Area")
+
+library(tmap)
+library(RColorBrewer)
+display.brewer.all()
+
+A<- tm_shape(Chicago_community) + tm_fill("Crowded.Housing", palette = "OrRd", style = "jenks", n=6, title = "Crowded Housing %") + 
+  tm_borders(alpha=.6) + 
+  tm_layout(legend.text.size = .8, legend.title.size = 1.0,  legend.position = c("right", "bottom"), frame = FALSE)
+
+B<- tm_shape(Chicago_community) + tm_fill("X2016.2018.adult.smoking.rate", palette = "OrRd", style = "jenks", n=5, title = "Adult Smoking % ") + 
+  tm_borders(alpha=.6) + 
+  tm_layout(legend.text.size = .8, legend.title.size = 1.0, legend.position = c("right", "bottom"), frame = FALSE) 
+
+C<- tm_shape(Chicago_community) + tm_fill("X2013.2017_Age_Adj_Rat_Influenza.and.pneumonia.deaths", palette = "OrRd", style = "jenks", n=6, title = "Influenza death % ") + 
+  tm_borders(alpha=.6) + 
+  tm_layout(legend.text.size = .8, legend.title.size = 1.0, legend.position = c("right", "bottom"), frame = FALSE) 
+
+D<- tm_shape(Chicago_community) + tm_fill("lung.cancer.death.rate", palette = "OrRd", style = "jenks", n=6, title = "Lung Cancer % ") + 
+  tm_borders(alpha=.6) + 
+  tm_layout(legend.text.size = .8, legend.title.size = 1.0, legend.position = c("right", "bottom"), frame = FALSE) 
+
+tmap_arrange(B,D)
+tmap_arrange(A,C)
+
+
+
+
+library(sf)
+library(tmap)
+library(leaflet)
+library(raster) # Needed for grid and kernel density surface
+library(adehabitatHR) # Needed for kernel density surface
+library(spatstat) # Needed for K-function
+
+sites<-read.csv("testing_sites.csv")
+sites.Points <- st_as_sf(sites, coords = c("longitude","latitude"), crs = 'WGS84' ) 
+st_crs(sites.Points)
+
+zip <- st_read("geo_export_428b9c33-80df-460c-ba29-f680dc167a24.shp")
+neighbor<-st_read("geo_export_67582296-2d0c-4fed-a52a-3543772fe629.shp")
+st_crs(zip)
+
+
+cases <- read.csv("covid_19_cases.csv")
+zip_19 <- merge(zip, cases, by.x="zip", by.y="ZIP.Code")
+glimpse(zip)
+head(cases)
+
+tmap_style("classic")
+tm_shape(zip_19) + tm_fill("case.rate", alpha=0.8, palette = "-inferno", style = "jenks",n=6, title = "% cases") + 
+  tm_borders(alpha=.4) + 
+  tm_shape(sites.Points) + tm_symbols(col = "white",size=0.2,shape=21) +tm_compass(size=1.5) + 
+tm_layout(legend.text.size = 0.6, legend.title.size = .8, frame = FALSE)
+
+zip_19<-zip_19 %>% st_transform(3488)
+sites.Points<-st_as_sf(sites.Points) %>% st_transform(3488)
+
+tmap_style("white")
+sites_buffers <- st_buffer(sites.Points, 3000)
+count_buffers <- lengths(st_within(zip_19, sites_buffers))
+zip_19_new <- cbind(zip_19,count_buffers)
+tm_shape(zip_19_new) + tm_fill(col = "count_buffers", n=5,palette = "Blues", style = "jenks",title = "Testing Sites Buffer Density")+ tm_borders(col = "black") 
+
+sites_buffers <- st_buffer(sites.Points, 3000)
+tm_shape(zip_19_new) + tm_borders() +
+  tm_shape(sites_buffers) + tm_borders(col = "grey") +
+  tm_shape(sites.Points) + tm_dots(col = "red",size=0.1)
+
+union.buffers <- st_union(sites_buffers)
+tm_shape(zip_19_new) + tm_borders() +
+  tm_shape(sites_buffers) + tm_borders(col = "grey") +
+tm_shape(union.buffers) + tm_fill(col = "grey", alpha = .4) + tm_borders(col = "black") +
+  tm_shape(sites.Points) + tm_dots(col = "red",size=0.05)
+
+kf <- Kest(as.ppp(sites.Points), correction = "Ripley")
+plot(kf)
+
